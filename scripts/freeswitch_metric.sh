@@ -153,7 +153,7 @@ case "${METRIC}" in
         ;;
 
     registrations)
-        RAW=$(fs_cmd "sofia status profile internal reg_count")
+        RAW=$(fs_cmd "show registrations count")
         first_int "${RAW}"
         ;;
 
