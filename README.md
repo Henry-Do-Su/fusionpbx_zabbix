@@ -47,7 +47,7 @@ Uses `fs_cli` read-only queries to collect metrics with zero impact on active ca
 
 ```bash
 git clone https://github.com/Henry-Do-Su/fusionpbx_zabbix
-cd zabbix-freeswitch-monitor
+cd fusionpbx_zabbix
 sudo bash install.sh
 ```
 
