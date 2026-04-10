@@ -1,0 +1,242 @@
+# =============================================================================
+# Zabbix template for FreeSWITCH monitoring via UserParameters.
+#
+# NOTE: Hand-authored starting point. If import fails on your Zabbix version:
+#   1. Create a minimal template manually in the Zabbix UI
+#   2. Export it as YAML
+#   3. Merge items/triggers/graphs from this file into the exported structure
+#   4. Re-import and commit the corrected version back to this repo
+# =============================================================================
+
+zabbix_export:
+  version: '6.4'
+  template_groups:
+    - uuid: 7df96b18c230490a9a0a9e2307226338
+      name: Templates/Telephony
+
+  templates:
+    - uuid: a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
+      template: 'FreeSWITCH by Zabbix Agent'
+      name: 'FreeSWITCH by Zabbix Agent'
+      description: |
+        Monitors FreeSWITCH/FusionPBX via fs_cli UserParameters.
+        No SNMP required. No FreeSWITCH restarts needed.
+      groups:
+        - name: Templates/Telephony
+
+      items:
+        # --- Calls ---
+        - uuid: 10000000000000000000000000000001
+          name: 'FreeSWITCH: Total active calls'
+          key: freeswitch.calls.total
+          delay: 30s
+          value_type: UNSIGNED
+          description: 'Total number of active calls'
+          tags:
+            - tag: component
+              value: calls
+
+        - uuid: 10000000000000000000000000000002
+          name: 'FreeSWITCH: Inbound calls'
+          key: freeswitch.calls.inbound
+          delay: 30s
+          value_type: UNSIGNED
+          tags:
+            - tag: component
+              value: calls
+
+        - uuid: 10000000000000000000000000000003
+          name: 'FreeSWITCH: Outbound calls'
+          key: freeswitch.calls.outbound
+          delay: 30s
+          value_type: UNSIGNED
+          tags:
+            - tag: component
+              value: calls
+
+        # --- Channels ---
+        - uuid: 10000000000000000000000000000004
+          name: 'FreeSWITCH: Active channels'
+          key: freeswitch.channels.count
+          delay: 30s
+          value_type: UNSIGNED
+          tags:
+            - tag: component
+              value: channels
+
+        # --- Sessions ---
+        - uuid: 10000000000000000000000000000005
+          name: 'FreeSWITCH: Current sessions'
+          key: freeswitch.sessions.current
+          delay: 30s
+          value_type: UNSIGNED
+          description: 'Active concurrent sessions'
+          tags:
+            - tag: component
+              value: sessions
+
+        - uuid: 10000000000000000000000000000006
+          name: 'FreeSWITCH: Max sessions'
+          key: freeswitch.sessions.max
+          delay: 5m
+          value_type: UNSIGNED
+          description: 'Configured session limit'
+          tags:
+            - tag: component
+              value: sessions
+
+        - uuid: 10000000000000000000000000000007
+          name: 'FreeSWITCH: Peak sessions'
+          key: freeswitch.sessions.peak
+          delay: 60s
+          value_type: UNSIGNED
+          description: 'Peak concurrent sessions since startup'
+          tags:
+            - tag: component
+              value: sessions
+
+        # --- Sessions per second ---
+        - uuid: 10000000000000000000000000000012
+          name: 'FreeSWITCH: Current sessions/sec'
+          key: freeswitch.sessions_per_sec.current
+          delay: 30s
+          value_type: UNSIGNED
+          description: 'Current sessions per second (CPS)'
+          tags:
+            - tag: component
+              value: sessions
+
+        - uuid: 10000000000000000000000000000013
+          name: 'FreeSWITCH: Max sessions/sec'
+          key: freeswitch.sessions_per_sec.max
+          delay: 5m
+          value_type: UNSIGNED
+          description: 'Configured max sessions per second limit'
+          tags:
+            - tag: component
+              value: sessions
+
+        # --- Registrations ---
+        - uuid: 10000000000000000000000000000008
+          name: 'FreeSWITCH: SIP registrations'
+          key: freeswitch.registrations.count
+          delay: 60s
+          value_type: UNSIGNED
+          tags:
+            - tag: component
+              value: registrations
+
+        # --- Health ---
+        - uuid: 10000000000000000000000000000009
+          name: 'FreeSWITCH: Uptime (seconds)'
+          key: freeswitch.uptime.seconds
+          delay: 5m
+          value_type: UNSIGNED
+          units: s
+          description: 'Approximate uptime (365-day year)'
+          tags:
+            - tag: component
+              value: health
+
+        - uuid: 10000000000000000000000000000010
+          name: 'FreeSWITCH: Service status'
+          key: freeswitch.status.ready
+          delay: 30s
+          value_type: UNSIGNED
+          description: '1 = UP and ready, 0 = DOWN or unreachable'
+          tags:
+            - tag: component
+              value: health
+
+        - uuid: 10000000000000000000000000000011
+          name: 'FreeSWITCH: Failed gateways (approximate)'
+          key: freeswitch.gateways.failed
+          delay: 60s
+          value_type: UNSIGNED
+          description: 'Approximate count of UNREGED/FAILED/EXPIRED gateways from sofia status'
+          tags:
+            - tag: component
+              value: gateways
+
+      triggers:
+        - uuid: 20000000000000000000000000000001
+          expression: 'last(/FreeSWITCH by Zabbix Agent/freeswitch.status.ready)=0'
+          name: 'FreeSWITCH is DOWN on {HOST.NAME}'
+          priority: DISASTER
+
+        - uuid: 20000000000000000000000000000002
+          expression: 'last(/FreeSWITCH by Zabbix Agent/freeswitch.gateways.failed)>0'
+          name: 'FreeSWITCH has {ITEM.LASTVALUE} failed gateway(s) on {HOST.NAME}'
+          priority: HIGH
+
+        - uuid: 20000000000000000000000000000003
+          expression: 'last(/FreeSWITCH by Zabbix Agent/freeswitch.uptime.seconds)<300'
+          name: 'FreeSWITCH was restarted on {HOST.NAME}'
+          priority: WARNING
+
+        - uuid: 20000000000000000000000000000004
+          expression: 'last(/FreeSWITCH by Zabbix Agent/freeswitch.sessions.current)>last(/FreeSWITCH by Zabbix Agent/freeswitch.sessions.max)*0.9'
+          name: 'FreeSWITCH sessions above 90% capacity on {HOST.NAME}'
+          priority: HIGH
+
+        - uuid: 20000000000000000000000000000005
+          expression: 'last(/FreeSWITCH by Zabbix Agent/freeswitch.sessions_per_sec.current)>last(/FreeSWITCH by Zabbix Agent/freeswitch.sessions_per_sec.max)*0.8'
+          name: 'FreeSWITCH CPS above 80% of max on {HOST.NAME}'
+          priority: WARNING
+
+      graphs:
+        - uuid: 30000000000000000000000000000001
+          name: 'FreeSWITCH: Active Calls'
+          graph_items:
+            - color: 1A7C11
+              item:
+                host: 'FreeSWITCH by Zabbix Agent'
+                key: freeswitch.calls.total
+            - color: 2774A4
+              item:
+                host: 'FreeSWITCH by Zabbix Agent'
+                key: freeswitch.calls.inbound
+            - color: F63100
+              item:
+                host: 'FreeSWITCH by Zabbix Agent'
+                key: freeswitch.calls.outbound
+
+        - uuid: 30000000000000000000000000000002
+          name: 'FreeSWITCH: Sessions & Channels'
+          graph_items:
+            - color: 1A7C11
+              item:
+                host: 'FreeSWITCH by Zabbix Agent'
+                key: freeswitch.sessions.current
+            - color: F63100
+              item:
+                host: 'FreeSWITCH by Zabbix Agent'
+                key: freeswitch.sessions.peak
+            - color: 2774A4
+              item:
+                host: 'FreeSWITCH by Zabbix Agent'
+                key: freeswitch.channels.count
+            - color: A54F10
+              item:
+                host: 'FreeSWITCH by Zabbix Agent'
+                key: freeswitch.sessions.max
+
+        - uuid: 30000000000000000000000000000003
+          name: 'FreeSWITCH: SIP Registrations'
+          graph_items:
+            - color: 1A7C11
+              item:
+                host: 'FreeSWITCH by Zabbix Agent'
+                key: freeswitch.registrations.count
+
+        - uuid: 30000000000000000000000000000004
+          name: 'FreeSWITCH: Sessions per Second'
+          graph_items:
+            - color: 1A7C11
+              item:
+                host: 'FreeSWITCH by Zabbix Agent'
+                key: freeswitch.sessions_per_sec.current
+            - color: A54F10
+              item:
+                host: 'FreeSWITCH by Zabbix Agent'
+                key: freeswitch.sessions_per_sec.max
