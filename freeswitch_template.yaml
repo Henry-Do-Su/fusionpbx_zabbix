@@ -1,0 +1,93 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: 1d12408342854fd5a4436dd6d5d1bd4a
+      name: Templates/Telephony
+  templates:
+    - uuid: d1bb3cf6acf747dbaea1f86b08d55843
+      template: 'FS Fusionpbx Zabbix Agent'
+      name: 'FS Fusionpbx Zabbix Agent'
+      groups:
+        - name: Templates/Telephony
+      items:
+        - uuid: 3dc60ef0cb684ec09b81ee0d2e08e34b
+          name: 'Inbound calls'
+          key: freeswitch.calls.inbound
+          delay: 30s
+        - uuid: d24c50129efd47fc9bcddadded3746e2
+          name: 'Outbound calls'
+          key: freeswitch.calls.outbound
+          delay: 30s
+        - uuid: 9e49872624e64c32a399e3e49fea5600
+          name: 'Total active calls'
+          key: freeswitch.calls.total
+          delay: 30s
+        - uuid: dd2b1ae942774422ae28bb795b7ebb69
+          name: 'Active channels'
+          key: freeswitch.channels.count
+          delay: 30s
+        - uuid: c73c2dae58e04cf2a266398b836865f3
+          name: 'Failed gateways'
+          key: freeswitch.gateways.failed
+          triggers:
+            - uuid: 4c31ea968f5b4c18ad512c2c1e58381c
+              expression: 'last(/FS Fusionpbx Zabbix Agent/freeswitch.gateways.failed)>0'
+              name: 'Failed gateways'
+              priority: HIGH
+        - uuid: 9b0c3ed46f6b4d3fa8e30b2f998b3301
+          name: 'SIP registrations'
+          key: freeswitch.registrations.count
+        - uuid: b586b4959d5e4de19a002db1b1330085
+          name: 'Current sessions'
+          key: freeswitch.sessions.current
+          delay: 30s
+          triggers:
+            - uuid: 1b861e31467b44738770951405eaeeb3
+              expression: 'last(/FS Fusionpbx Zabbix Agent/freeswitch.sessions.current)>last(/FS Fusionpbx Zabbix Agent/freeswitch.sessions.current)*0.8'
+              name: 'Sessions above 80%'
+              priority: HIGH
+        - uuid: 8fbb33b05c2a4760aec785c372f0d5cd
+          name: 'Max sessions'
+          key: freeswitch.sessions.max
+          delay: 5m
+        - uuid: 0cec1ad34a77454796746cd1d9482908
+          name: 'Peak sessions'
+          key: freeswitch.sessions.peak
+          delay: 5m
+        - uuid: a997057cdf1d400384f49d840568e94e
+          name: 'Current CPS'
+          key: freeswitch.sessions_per_sec.current
+          delay: 30s
+        - uuid: 5eaee50c4d824ff1a714f8b5286e8e46
+          name: 'Max CPS'
+          key: freeswitch.sessions_per_sec.max
+          delay: 5m
+        - uuid: b5a8969672c246e0ae5e0f0116bf3ed4
+          name: 'Service status'
+          key: freeswitch.status.ready
+          delay: 30s
+          triggers:
+            - uuid: 153ae8691c01452880b2baaf28a31e6c
+              expression: 'last(/FS Fusionpbx Zabbix Agent/freeswitch.status.ready)=0'
+              name: 'FreeSWITCH is DOWN'
+              priority: DISASTER
+        - uuid: 8c415b8ae25d438b9520894dc1202df0
+          name: Uptime
+          key: freeswitch.uptime.seconds
+          delay: 5m
+          units: seconds
+          triggers:
+            - uuid: 0f502198f325471ca64276f00bf9248a
+              expression: 'last(/FS Fusionpbx Zabbix Agent/freeswitch.uptime.seconds)<300'
+              name: 'Recently restarted'
+              priority: WARNING
+  graphs:
+    - uuid: b97fc79f5abf445b8d2d2411473ba205
+      name: 'Registration Count'
+      yaxismax: '0'
+      graph_items:
+        - color: 199C0D
+          calc_fnc: ALL
+          item:
+            host: 'FS Fusionpbx Zabbix Agent'
+            key: freeswitch.registrations.count
