@@ -1,0 +1,8 @@
+# /etc/zabbix/freeswitch_monitor.conf
+# Sourced by freeswitch_metric.sh on each run.
+
+# Path to fs_cli binary
+FS_CLI="/usr/bin/fs_cli"
+
+# Timeout in seconds for fs_cli commands
+#FS_TIMEOUT=5
