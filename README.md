@@ -171,7 +171,7 @@ FS_TIMEOUT=10
 
 ## Template Note
 
-The included YAML template was hand-authored as a starting point for Zabbix 6.4+. If it fails to import:
+The included YAML template was hand-authored as a starting point for Zabbix 7.0 If it fails to import:
 1. Create a minimal template manually in the Zabbix UI
 2. Export it as YAML
 3. Merge the items, triggers, and graphs from this repo into the exported structure
