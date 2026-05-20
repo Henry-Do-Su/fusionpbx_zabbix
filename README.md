@@ -92,22 +92,22 @@ An example is provided in `conf/freeswitch_monitor.conf.example`.
 ## Manual Install
 
 ```bash
-# Copy files
-sudo cp scripts/freeswitch_metric.sh /etc/zabbix/scripts/
-sudo chmod 750 /etc/zabbix/scripts/freeswitch_metric.sh
-sudo chown root:zabbix /etc/zabbix/scripts/freeswitch_metric.sh
 
-# Create config
-sudo cp conf/freeswitch_monitor.conf.example /etc/zabbix/freeswitch_monitor.conf
+mkdir -p /etc/zabbix/scripts
+cp scripts/freeswitch_metric.sh /etc/zabbix/scripts/
+cp conf/freeswitch_monitor.conf.example /etc/zabbix/freeswitch_monitor.conf
+cp conf/userparameter_freeswitch.conf /etc/zabbix/zabbix_agent2.d/
 
-# Copy UserParameter to your agent's Include directory
-sudo cp conf/userparameter_freeswitch.conf /etc/zabbix/zabbix_agent2.d/
+chown root:root /etc/zabbix/scripts
+chmod 755 /etc/zabbix/scripts
 
-# Grant fs_cli access
-sudo usermod -aG freeswitch zabbix
+chown root:zabbix /etc/zabbix/scripts/freeswitch_metric.sh
+chmod 750 /etc/zabbix/scripts/freeswitch_metric.sh
 
-# Restart agent
-sudo systemctl restart zabbix-agent2
+chown root:zabbix /etc/zabbix/freeswitch_monitor.conf
+chmod 640 /etc/zabbix/freeswitch_monitor.conf
+
+systemctl restart zabbix-agent2
 ```
 
 ## Testing
