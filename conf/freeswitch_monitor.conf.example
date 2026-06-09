@@ -1,8 +1,19 @@
 # /etc/zabbix/freeswitch_monitor.conf
 # Sourced by freeswitch_metric.sh on each run.
 
-# Path to fs_cli binary
+# Path to fs_cli binary.
+# On many FusionPBX Debian installs this is /usr/bin/fs_cli.
+# On source installs it may be /usr/local/freeswitch/bin/fs_cli.
 FS_CLI="/usr/bin/fs_cli"
 
 # Timeout in seconds for fs_cli commands
-#FS_TIMEOUT=5
+FS_TIMEOUT=5
+
+# Path to iptables binary
+IPTABLES="/usr/sbin/iptables"
+
+# Timeout in seconds for iptables commands
+IPTABLES_TIMEOUT=5
+
+# FusionPBX Event Guard chains to monitor
+EVENT_GUARD_CHAINS="sip-auth-ip sip-auth-fail"
