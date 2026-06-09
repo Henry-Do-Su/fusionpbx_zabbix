@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# freeswitch_metric.sh - Collects FreeSWITCH metrics for Zabbix
+# freeswitch_metric.sh - Collects FreeSWITCH, FusionPBX and Event Guard metrics
 # Place in: /etc/zabbix/scripts/freeswitch_metric.sh
 # =============================================================================
 
@@ -13,8 +13,14 @@ if [[ -f "${CONFIG_FILE}" ]]; then
     . "${CONFIG_FILE}"
 fi
 
+# --- FreeSWITCH defaults ---
 FS_CLI="${FS_CLI:-/usr/local/freeswitch/bin/fs_cli}"
 FS_TIMEOUT="${FS_TIMEOUT:-5}"
+
+# --- iptables / FusionPBX Event Guard defaults ---
+IPTABLES="${IPTABLES:-/usr/sbin/iptables}"
+IPTABLES_TIMEOUT="${IPTABLES_TIMEOUT:-5}"
+EVENT_GUARD_CHAINS="${EVENT_GUARD_CHAINS:-sip-auth-ip sip-auth-fail}"
 
 fs_cmd() {
     local result
@@ -45,9 +51,168 @@ clean_text() {
     tr -d ',' <<< "${1:-}"
 }
 
+iptables_cmd() {
+    timeout "${IPTABLES_TIMEOUT}" sudo -n "${IPTABLES}" "$@" 2>/dev/null || true
+}
+
+iptables_check() {
+    timeout "${IPTABLES_TIMEOUT}" sudo -n "${IPTABLES}" "$@" >/dev/null 2>&1
+}
+
+event_guard_chain_allowed() {
+    case "${1:-}" in
+        sip-auth-ip|sip-auth-fail)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+valid_event_guard_chain() {
+    if event_guard_chain_allowed "${1:-}"; then
+        return 0
+    fi
+
+    echo "ZBX_NOTSUPPORTED: invalid Event Guard chain '${1:-}'"
+    exit 1
+}
+
+event_guard_ips() {
+    local chain="${1:-}"
+    valid_event_guard_chain "${chain}"
+
+    iptables_cmd -S "${chain}" | awk -v chain="${chain}" '
+        $1 == "-A" && $2 == chain {
+            source = ""
+            target = ""
+
+            for (i = 3; i <= NF; i++) {
+                if ($i == "-s" && (i + 1) <= NF) {
+                    source = $(i + 1)
+                }
+                if ($i == "-j" && (i + 1) <= NF) {
+                    target = $(i + 1)
+                }
+            }
+
+            if (source != "" && (target == "DROP" || target == "REJECT")) {
+                print source
+            }
+        }
+    ' | sed 's#/32$##'
+}
+
+event_guard_counter() {
+    local chain="${1:-}"
+    local mode="${2:-packets}"
+    valid_event_guard_chain "${chain}"
+
+    iptables_cmd -L "${chain}" -n -v -x | awk -v mode="${mode}" '
+        NR > 2 && ($3 == "DROP" || $3 == "REJECT") {
+            packets += $1
+            bytes += $2
+        }
+        END {
+            if (mode == "bytes") {
+                print bytes + 0
+            }
+            else {
+                print packets + 0
+            }
+        }
+    '
+}
+
+event_guard_lld() {
+    local first=1
+    local chain
+
+    printf '{"data":['
+
+    for chain in ${EVENT_GUARD_CHAINS}; do
+        if ! event_guard_chain_allowed "${chain}"; then
+            continue
+        fi
+
+        if iptables_check -S "${chain}"; then
+            if [[ ${first} -eq 0 ]]; then
+                printf ','
+            fi
+
+            printf '{"{#CHAIN}":"%s"}' "${chain}"
+            first=0
+        fi
+    done
+
+    printf ']}\n'
+}
+
+event_guard_all_total() {
+    local chain
+    local total=0
+    local count
+
+    for chain in ${EVENT_GUARD_CHAINS}; do
+        if ! event_guard_chain_allowed "${chain}"; then
+            continue
+        fi
+
+        count=$(event_guard_ips "${chain}" | awk 'END { print NR + 0 }')
+        total=$((total + count))
+    done
+
+    echo "${total}"
+}
+
+event_guard_all_unique() {
+    local chain
+
+    for chain in ${EVENT_GUARD_CHAINS}; do
+        if ! event_guard_chain_allowed "${chain}"; then
+            continue
+        fi
+
+        event_guard_ips "${chain}"
+    done | sort -u | awk 'END { print NR + 0 }'
+}
+
+event_guard_all_duplicates() {
+    local total
+    local unique
+
+    total=$(event_guard_all_total)
+    unique=$(event_guard_all_unique)
+
+    echo $((total - unique))
+}
+
+event_guard_all_counter() {
+    local mode="${1:-packets}"
+    local chain
+    local total=0
+    local count
+
+    for chain in ${EVENT_GUARD_CHAINS}; do
+        if ! event_guard_chain_allowed "${chain}"; then
+            continue
+        fi
+
+        count=$(event_guard_counter "${chain}" "${mode}")
+        total=$((total + count))
+    done
+
+    echo "${total}"
+}
+
 METRIC="${1:-}"
 
 case "${METRIC}" in
+
+    # -------------------------------------------------------------------------
+    # FreeSWITCH calls
+    # -------------------------------------------------------------------------
 
     calls_total)
         RAW=$(fs_cmd "show calls count")
@@ -64,10 +229,18 @@ case "${METRIC}" in
         first_int "${RAW}"
         ;;
 
+    # -------------------------------------------------------------------------
+    # FreeSWITCH channels
+    # -------------------------------------------------------------------------
+
     channels_count)
         RAW=$(fs_cmd "show channels count")
         first_int "${RAW}"
         ;;
+
+    # -------------------------------------------------------------------------
+    # FreeSWITCH sessions
+    # -------------------------------------------------------------------------
 
     sessions_current)
         RAW=$(clean_text "$(fs_cmd "status")")
@@ -90,8 +263,8 @@ case "${METRIC}" in
             BEGIN { found = 0 }
             /^[0-9]+ session\(s\) - peak [0-9]+/ {
                 for (i = 1; i <= NF; i++) {
-                    if ($i == "peak" && (i+1) <= NF && $(i+1) ~ /^[0-9]+$/) {
-                        print $(i+1)
+                    if ($i == "peak" && (i + 1) <= NF && $(i + 1) ~ /^[0-9]+$/) {
+                        print $(i + 1)
                         found = 1
                         exit
                     }
@@ -139,8 +312,8 @@ case "${METRIC}" in
             BEGIN { found = 0 }
             /^[0-9]+ session\(s\) per Sec out of max [0-9]+/ {
                 for (i = 1; i <= NF; i++) {
-                    if ($i == "max" && (i+1) <= NF && $(i+1) ~ /^[0-9]+$/) {
-                        print $(i+1)
+                    if ($i == "max" && (i + 1) <= NF && $(i + 1) ~ /^[0-9]+$/) {
+                        print $(i + 1)
                         found = 1
                         exit
                     }
@@ -152,22 +325,52 @@ case "${METRIC}" in
         ' <<< "${RAW}"
         ;;
 
+    # -------------------------------------------------------------------------
+    # FreeSWITCH registrations
+    # -------------------------------------------------------------------------
+
     registrations)
         RAW=$(fs_cmd "show registrations count")
         first_int "${RAW}"
         ;;
 
+    # -------------------------------------------------------------------------
+    # FreeSWITCH health
+    # -------------------------------------------------------------------------
+
     uptime)
         RAW=$(clean_text "$(fs_cmd "status")")
-        # NOTE: Uses 365-day year (approximate). Acceptable since this metric
-        # is only used for restart detection, not precise timekeeping.
-        YEARS=$(awk '{for(i=1;i<=NF;i++) if($i ~ /^years?$/)  {print $(i-1); found=1; exit}} END{if(!found) print 0}' found=0 <<< "${RAW}")
-        DAYS=$(awk  '{for(i=1;i<=NF;i++) if($i ~ /^days?$/)   {print $(i-1); found=1; exit}} END{if(!found) print 0}' found=0 <<< "${RAW}")
-        HOURS=$(awk '{for(i=1;i<=NF;i++) if($i ~ /^hours?$/)  {print $(i-1); found=1; exit}} END{if(!found) print 0}' found=0 <<< "${RAW}")
-        MINS=$(awk  '{for(i=1;i<=NF;i++) if($i ~ /^minutes?$/){print $(i-1); found=1; exit}} END{if(!found) print 0}' found=0 <<< "${RAW}")
-        SECS=$(awk  '{for(i=1;i<=NF;i++) if($i ~ /^seconds?$/){print $(i-1); found=1; exit}} END{if(!found) print 0}' found=0 <<< "${RAW}")
-
-        echo $(( YEARS*31536000 + DAYS*86400 + HOURS*3600 + MINS*60 + SECS ))
+        awk '
+            BEGIN {
+                years = 0
+                days = 0
+                hours = 0
+                minutes = 0
+                seconds = 0
+            }
+            {
+                for (i = 1; i <= NF; i++) {
+                    if ($i ~ /^years?$/) {
+                        years = $(i - 1)
+                    }
+                    if ($i ~ /^days?$/) {
+                        days = $(i - 1)
+                    }
+                    if ($i ~ /^hours?$/) {
+                        hours = $(i - 1)
+                    }
+                    if ($i ~ /^minutes?$/) {
+                        minutes = $(i - 1)
+                    }
+                    if ($i ~ /^seconds?$/) {
+                        seconds = $(i - 1)
+                    }
+                }
+            }
+            END {
+                print years * 31536000 + days * 86400 + hours * 3600 + minutes * 60 + seconds
+            }
+        ' <<< "${RAW}"
         ;;
 
     ready)
@@ -180,12 +383,80 @@ case "${METRIC}" in
         ;;
 
     gateways_failed)
-        # Approximate count of unhealthy gateways from sofia status output.
-        # This is a rough indicator based on CLI text matching, not an
-        # authoritative per-gateway health check.
         RAW=$(fs_cmd "sofia status")
         COUNT=$(grep -cE 'UNREGED|FAILED|EXPIRED' <<< "${RAW}" || true)
         echo "${COUNT:-0}"
+        ;;
+
+    # -------------------------------------------------------------------------
+    # FusionPBX Event Guard / iptables
+    # -------------------------------------------------------------------------
+
+    event_guard_lld)
+        event_guard_lld
+        ;;
+
+    event_guard_chain_exists)
+        CHAIN="${2:-}"
+        valid_event_guard_chain "${CHAIN}"
+
+        if iptables_check -S "${CHAIN}"; then
+            echo 1
+        else
+            echo 0
+        fi
+        ;;
+
+    event_guard_banned_total)
+        CHAIN="${2:-}"
+        event_guard_ips "${CHAIN}" | awk 'END { print NR + 0 }'
+        ;;
+
+    event_guard_banned_unique)
+        CHAIN="${2:-}"
+        event_guard_ips "${CHAIN}" | sort -u | awk 'END { print NR + 0 }'
+        ;;
+
+    event_guard_banned_duplicates)
+        CHAIN="${2:-}"
+        TOTAL=$(event_guard_ips "${CHAIN}" | awk 'END { print NR + 0 }')
+        UNIQUE=$(event_guard_ips "${CHAIN}" | sort -u | awk 'END { print NR + 0 }')
+        echo $((TOTAL - UNIQUE))
+        ;;
+
+    event_guard_banned_list)
+        CHAIN="${2:-}"
+        event_guard_ips "${CHAIN}" | sort -u | paste -sd ',' -
+        ;;
+
+    event_guard_packets)
+        CHAIN="${2:-}"
+        event_guard_counter "${CHAIN}" packets
+        ;;
+
+    event_guard_bytes)
+        CHAIN="${2:-}"
+        event_guard_counter "${CHAIN}" bytes
+        ;;
+
+    event_guard_banned_total_all)
+        event_guard_all_total
+        ;;
+
+    event_guard_banned_unique_all)
+        event_guard_all_unique
+        ;;
+
+    event_guard_banned_duplicates_all)
+        event_guard_all_duplicates
+        ;;
+
+    event_guard_packets_all)
+        event_guard_all_counter packets
+        ;;
+
+    event_guard_bytes_all)
+        event_guard_all_counter bytes
         ;;
 
     *)
